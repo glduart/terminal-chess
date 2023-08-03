@@ -1,15 +1,75 @@
 // TO DO: XEQUE DESCOBERTO, MOVIMENTOS ESPECIAIS, MELHORAR A NOTACAO, MAIS DE 1 PECA DANDO XEQUE AO
 // MESMO TEMPO
 
-use regex::Regex;
 use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
 
 const DIAGONALS: [[isize; 2]; 4] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 const SIDES: [[isize; 2]; 4] = [[0, 1], [0, -1], [1, 0], [-1, 0]];
 
-type Board = [[char; 8]; 8];
-type Columns = HashMap<char, u32>;
+impl Color {
+    fn reverse(&self) -> Self {
+        match &self {
+            Color::WHITE => Color::BLACK,
+            Color::BLACK => Color::WHITE,
+        }
+    }
+}
+
+trait InfoArray {
+    fn unwrap_array(&self) -> Result<[Info; 2], &'static str>;
+}
+
+impl InfoArray for [Result<Info, &'static str>; 2] {
+    fn unwrap_array(&self) -> Result<[Info; 2], &'static str> {
+        match &self {
+            [Ok(a), Ok(b)] => Ok([*a, *b]),
+            [Err(err), _] => Err(err),
+            [_, Err(err)] => Err(err),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum BoardSpot {
+    Piece(Piece),
+    BLANK,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PieceType {
+    PAWN,
+    ROOK,
+    KNIGHT,
+    BISHOP,
+    QUEEN,
+    KING,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Color {
+    WHITE,
+    BLACK,
+}
+
+enum Columns {
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+    H,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Piece {
+    piece_type: PieceType,
+    color: Color,
+}
+
+type Board = [[BoardSpot; 8]; 8];
 
 impl PartialEq for Position {
     fn eq(&self, other: &Self) -> bool {
@@ -17,43 +77,74 @@ impl PartialEq for Position {
     }
 }
 
-impl ToString for Piece {
-    fn to_string(&self) -> String {
+impl BoardSpot {
+    fn to_board_representation(&self) -> char {
         match self {
-            Piece::WHITEPAWN => String::from("White Pawn"),
-            Piece::WHITEROOK => String::from("White Rook"),
-            Piece::WHITEKNIGHT => String::from("White Knight"),
-            Piece::WHITEBISHOP => String::from("White Bishop"),
-            Piece::WHITEQUEEN => String::from("White Queen"),
-            Piece::WHITEKING => String::from("White King"),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::WHITE,
+            }) => '♟',
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::ROOK,
+                color: Color::WHITE,
+            }) => '♜',
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::KNIGHT,
+                color: Color::WHITE,
+            }) => '♞',
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::BISHOP,
+                color: Color::WHITE,
+            }) => '♝',
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::QUEEN,
+                color: Color::WHITE,
+            }) => '♛',
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::KING,
+                color: Color::WHITE,
+            }) => '♚',
 
-            Piece::BLACKPAWN => String::from("Black Pawn"),
-            Piece::BLACKROOK => String::from("Black Rook"),
-            Piece::BLACKKNIGHT => String::from("Black Knight"),
-            Piece::BLACKBISHOP => String::from("Black Bishop"),
-            Piece::BLACKQUEEN => String::from("Black Queen"),
-            Piece::BLACKKING => String::from("Black King"),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::BLACK,
+            }) => '♙',
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::ROOK,
+                color: Color::BLACK,
+            }) => '♖',
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::KNIGHT,
+                color: Color::BLACK,
+            }) => '♘',
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::BISHOP,
+                color: Color::BLACK,
+            }) => '♗',
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::QUEEN,
+                color: Color::BLACK,
+            }) => '♕',
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::KING,
+                color: Color::BLACK,
+            }) => '♔',
 
-            Piece::BLANK => String::from("Blank"),
+            BoardSpot::BLANK => '.',
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
-enum Piece {
-    WHITEPAWN,
-    WHITEROOK,
-    WHITEKNIGHT,
-    WHITEBISHOP,
-    WHITEQUEEN,
-    WHITEKING,
-    BLACKPAWN,
-    BLACKROOK,
-    BLACKKNIGHT,
-    BLACKBISHOP,
-    BLACKQUEEN,
-    BLACKKING,
-    BLANK,
+#[derive(Debug, Clone, Copy)]
+struct Position {
+    line: usize,
+    column: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Info {
+    position: Position,
+    piece: BoardSpot,
 }
 
 #[derive(PartialEq, Eq)]
@@ -63,22 +154,14 @@ enum CheckPiece {
     NOPIECE,
 }
 
-#[derive(Debug, Clone)]
-struct Position {
-    line: usize,
-    column: usize,
-}
-
-#[derive(Debug)]
-struct Info {
-    position: Position,
-    piece: Piece,
-}
-
-fn diagonals_movement_check(board: &Board, piece: &Info, piece_color: &String) -> Vec<Position> {
+fn diagonals_movement_check(
+    board: &Board,
+    piece: &Piece,
+    piece_position: &Position,
+) -> Vec<Position> {
     let mut possible_positions: Vec<Position> = vec![];
     for movement in DIAGONALS {
-        let mut new_position = piece.position.clone();
+        let mut new_position = piece_position.clone();
         while new_position.line < 8 && new_position.column < 8 {
             new_position.line = (new_position.line as isize + movement[0]) as usize;
             new_position.column = (new_position.column as isize + movement[1]) as usize;
@@ -88,7 +171,7 @@ fn diagonals_movement_check(board: &Board, piece: &Info, piece_color: &String) -
             }
 
             let check_piece =
-                check_piece_in_possible_movement_spot(board, &piece_color, &new_position);
+                check_piece_in_possible_movement_spot(board, &piece.color, &new_position);
             if check_piece == CheckPiece::SAMECOLOR {
                 break;
             } else {
@@ -102,10 +185,10 @@ fn diagonals_movement_check(board: &Board, piece: &Info, piece_color: &String) -
     possible_positions
 }
 
-fn sides_movement_check(board: &Board, piece: &Info, piece_color: &String) -> Vec<Position> {
+fn sides_movement_check(board: &Board, piece: &Piece, piece_position: &Position) -> Vec<Position> {
     let mut possible_positions: Vec<Position> = vec![];
     for movement in SIDES {
-        let mut new_position = piece.position.clone();
+        let mut new_position = piece_position.clone();
         while new_position.line < 8 && new_position.column < 8 {
             new_position.line = (new_position.line as isize + movement[0]) as usize;
             new_position.column = (new_position.column as isize + movement[1]) as usize;
@@ -114,7 +197,7 @@ fn sides_movement_check(board: &Board, piece: &Info, piece_color: &String) -> Ve
             }
 
             let check_piece =
-                check_piece_in_possible_movement_spot(board, &piece_color, &new_position);
+                check_piece_in_possible_movement_spot(board, &piece.color, &new_position);
 
             if check_piece == CheckPiece::SAMECOLOR {
                 break;
@@ -129,72 +212,52 @@ fn sides_movement_check(board: &Board, piece: &Info, piece_color: &String) -> Ve
     possible_positions
 }
 
-fn get_piece(piece: char) -> Piece {
-    match piece {
-        '♟' => Piece::WHITEPAWN,
-        '♜' => Piece::WHITEROOK,
-        '♞' => Piece::WHITEKNIGHT,
-        '♝' => Piece::WHITEBISHOP,
-        '♛' => Piece::WHITEQUEEN,
-        '♚' => Piece::WHITEKING,
-
-        '♙' => Piece::BLACKPAWN,
-        '♖' => Piece::BLACKROOK,
-        '♘' => Piece::BLACKKNIGHT,
-        '♗' => Piece::BLACKBISHOP,
-        '♕' => Piece::BLACKQUEEN,
-        '♔' => Piece::BLACKKING,
-
-        _ => Piece::BLANK,
+fn letter_to_column(letter: char) -> Option<Columns> {
+    match letter {
+        'a' => Some(Columns::A),
+        'b' => Some(Columns::B),
+        'c' => Some(Columns::C),
+        'd' => Some(Columns::D),
+        'e' => Some(Columns::E),
+        'f' => Some(Columns::F),
+        'g' => Some(Columns::G),
+        'h' => Some(Columns::H),
+        _ => None,
     }
 }
 
-fn get_piece_color(piece: String) -> String {
-    let color_regex = Regex::new(r"^[A-Z][a-z]{4}").unwrap();
-    let color = color_regex.captures(&piece).unwrap();
-    color[0].to_string()
-}
-
-fn translate_notation(board: &Board, notation_position: &str, columns: &Columns) -> Info {
+fn translate_notation(board: &Board, notation_position: &str) -> Result<Info, &'static str> {
     let vectorized_position: Vec<char> = notation_position.chars().collect();
-    let column = columns.get(&vectorized_position[0]).unwrap_or(&0);
 
-    if *column == 0 {
-        Info {
-            position: Position { column: 0, line: 0 },
-            piece: Piece::BLANK,
-        }
-    } else {
-        let line = vectorized_position[1].to_digit(10).unwrap_or(0);
-        if line == 0 {
-            return Info {
-                position: Position { column: 0, line: 0 },
-                piece: Piece::BLANK,
-            };
-        }
-        Info {
-            position: Position {
-                column: (*column - 1) as usize,
-                line: (line - 1) as usize,
-            },
-            piece: get_piece(board[(line - 1) as usize][(*column - 1) as usize]),
-        }
+    let column = letter_to_column(vectorized_position[0]).ok_or("Invalid line")?;
+
+    let line = vectorized_position[1].to_digit(10).ok_or("Invalid line")?;
+
+    if line > 8 {
+        return Err("Invalid line");
     }
+
+    let piece_position = Position {
+        column: (column as u32) as usize,
+        line: (line as u32 - 1) as usize,
+    };
+
+    Ok(Info {
+        position: piece_position,
+        piece: board[piece_position.line][piece_position.column],
+    })
 }
 
 fn check_piece_in_possible_movement_spot(
     board: &Board,
-    piece_color: &String,
+    piece_color: &Color,
     position_to_check: &Position,
 ) -> CheckPiece {
-    let piece_on_possible_position =
-        get_piece(board[position_to_check.line][position_to_check.column]);
+    let piece_on_possible_position = board[position_to_check.line][position_to_check.column];
     match piece_on_possible_position {
-        Piece::BLANK => CheckPiece::NOPIECE,
-        _ => {
-            let piece_on_possible_position_color =
-                get_piece_color(piece_on_possible_position.to_string());
-            if piece_on_possible_position_color == *piece_color {
+        BoardSpot::BLANK => CheckPiece::NOPIECE,
+        BoardSpot::Piece(piece) => {
+            if piece.color == *piece_color {
                 CheckPiece::SAMECOLOR
             } else {
                 CheckPiece::DIFFERENTCOLOR
@@ -202,40 +265,67 @@ fn check_piece_in_possible_movement_spot(
         }
     }
 }
+fn generate_all_pieces_possible_movements(board: &Board, pieces_infos: Vec<Info>) -> Vec<Position> {
+    let mut all_possible_movements: Vec<Position> = vec![];
 
-fn generate_possible_movements(board: &Board, piece: &Info) -> Vec<Position> {
-    let piece_color = get_piece_color(piece.piece.to_string());
+    for info in pieces_infos {
+        match info.piece {
+            BoardSpot::Piece(piece) => all_possible_movements.extend(generate_possible_movements(
+                board,
+                &piece,
+                &info.position,
+            )),
+            _ => continue,
+        }
+    }
 
+    all_possible_movements
+}
+
+fn generate_possible_movements(
+    board: &Board,
+    piece: &Piece,
+    piece_position: &Position,
+) -> Vec<Position> {
     let mut possible_positions: Vec<Position> = vec![];
-    match piece.piece {
-        Piece::WHITEPAWN | Piece::BLACKPAWN => {
-            let white_pawn_movements = HashMap::from([
+
+    match piece.piece_type {
+        PieceType::PAWN => {
+            let pawn_movements = HashMap::from([
                 ("forward", [[1, 0], [2, 0]]),
                 ("diagonal", [[1, 1], [1, -1]]),
             ]);
-            for (key, value) in white_pawn_movements.iter() {
+            for (key, value) in pawn_movements.iter() {
                 for movement in value {
-                    let line = piece.position.line as isize
-                        + (if piece.piece == Piece::BLACKPAWN {
+                    if movement[0] == 2 {
+                        if (piece_position.line != 1 && piece.color == Color::WHITE)
+                            || (piece_position.line != 6 && piece.color == Color::BLACK)
+                        {
+                            continue;
+                        }
+                    }
+                    let line = piece_position.line as isize
+                        + (if piece.color == Color::BLACK {
                             movement[0] * -1
                         } else {
                             movement[0]
                         });
                     let new_position = Position {
                         line: line as usize,
-                        column: (piece.position.column as isize + movement[1]) as usize,
+                        column: (piece_position.column as isize + movement[1]) as usize,
                     };
+
                     if new_position.line >= 8 || new_position.column >= 8 {
                         continue;
                     }
                     if key == &"forward" {
-                        if check_piece_in_possible_movement_spot(board, &piece_color, &new_position)
+                        if check_piece_in_possible_movement_spot(board, &piece.color, &new_position)
                             == CheckPiece::NOPIECE
                         {
                             possible_positions.push(new_position);
                         }
                     } else {
-                        if check_piece_in_possible_movement_spot(board, &piece_color, &new_position)
+                        if check_piece_in_possible_movement_spot(board, &piece.color, &new_position)
                             == CheckPiece::DIFFERENTCOLOR
                         {
                             possible_positions.push(new_position);
@@ -245,11 +335,11 @@ fn generate_possible_movements(board: &Board, piece: &Info) -> Vec<Position> {
             }
         }
 
-        Piece::WHITEBISHOP | Piece::BLACKBISHOP => {
-            possible_positions = diagonals_movement_check(board, piece, &piece_color);
+        PieceType::BISHOP => {
+            possible_positions = diagonals_movement_check(board, piece, piece_position);
         }
 
-        Piece::WHITEKNIGHT | Piece::BLACKKNIGHT => {
+        PieceType::KNIGHT => {
             let knight_movements: Vec<[isize; 2]> = vec![
                 [2, 1],
                 [2, -1],
@@ -262,8 +352,8 @@ fn generate_possible_movements(board: &Board, piece: &Info) -> Vec<Position> {
             ];
             for movemement in knight_movements {
                 let new_position = Position {
-                    line: (piece.position.line as isize + movemement[0]) as usize,
-                    column: (piece.position.column as isize + movemement[1]) as usize,
+                    line: (piece_position.line as isize + movemement[0]) as usize,
+                    column: (piece_position.column as isize + movemement[1]) as usize,
                 };
 
                 if new_position.line >= 8 || new_position.column >= 8 {
@@ -271,7 +361,7 @@ fn generate_possible_movements(board: &Board, piece: &Info) -> Vec<Position> {
                 }
 
                 let check_piece =
-                    check_piece_in_possible_movement_spot(board, &piece_color, &new_position);
+                    check_piece_in_possible_movement_spot(board, &piece.color, &new_position);
 
                 if check_piece != CheckPiece::SAMECOLOR {
                     possible_positions.push(new_position);
@@ -279,25 +369,27 @@ fn generate_possible_movements(board: &Board, piece: &Info) -> Vec<Position> {
             }
         }
 
-        Piece::WHITEROOK | Piece::BLACKROOK => {
-            possible_positions = sides_movement_check(board, piece, &piece_color);
+        PieceType::ROOK => {
+            possible_positions = sides_movement_check(board, piece, piece_position);
         }
-        Piece::WHITEQUEEN | Piece::BLACKQUEEN => {
-            let diagonals_moves = diagonals_movement_check(board, piece, &piece_color);
+
+        PieceType::QUEEN => {
+            let diagonals_moves = diagonals_movement_check(board, piece, &piece_position);
             possible_positions.extend(diagonals_moves);
 
-            let sides_moves = sides_movement_check(board, piece, &piece_color);
+            let sides_moves = sides_movement_check(board, piece, &piece_position);
 
             possible_positions.extend(sides_moves);
         }
-        Piece::WHITEKING | Piece::BLACKKING => {
+
+        PieceType::KING => {
             let mut king_movements: Vec<[isize; 2]> = vec![];
             king_movements.extend(DIAGONALS);
             king_movements.extend(SIDES);
             for movement in king_movements {
                 let new_position = Position {
-                    line: (piece.position.line as isize + movement[0]) as usize,
-                    column: (piece.position.column as isize + movement[1]) as usize,
+                    line: (piece_position.line as isize + movement[0]) as usize,
+                    column: (piece_position.column as isize + movement[1]) as usize,
                 };
 
                 if new_position.line >= 8 || new_position.column >= 8 {
@@ -305,21 +397,26 @@ fn generate_possible_movements(board: &Board, piece: &Info) -> Vec<Position> {
                 }
 
                 let check_piece =
-                    check_piece_in_possible_movement_spot(board, &piece_color, &new_position);
+                    check_piece_in_possible_movement_spot(board, &piece.color, &new_position);
 
                 if check_piece != CheckPiece::SAMECOLOR {
                     possible_positions.push(new_position);
                 }
             }
         }
-
-        _ => possible_positions = vec![],
     }
     possible_positions
 }
 
-fn check_move(board: &Board, starting_position: &Info, destination_position: &Position) -> bool {
-    let possible_movements = generate_possible_movements(board, starting_position);
+fn check_move(
+    board: &Board,
+    piece: Piece,
+    starting_position: &Position,
+    destination_position: &Position,
+) -> bool {
+    let possible_movements = generate_possible_movements(board, &piece, &starting_position);
+    println!("POSSIBLE MOVEMENTS");
+    println!("{:?}", possible_movements);
     if possible_movements.contains(&destination_position) {
         return true;
     }
@@ -328,15 +425,15 @@ fn check_move(board: &Board, starting_position: &Info, destination_position: &Po
 
 fn move_piece(
     board: &Board,
-    starting_position: &Info,
-    destination_position: &Info,
+    piece: Piece,
+    starting_position: &Position,
+    destination_position: &Position,
 ) -> (Board, bool) {
     let mut new_board = *board;
-    let is_legal_move = check_move(board, starting_position, &destination_position.position);
+    let is_legal_move = check_move(board, piece, starting_position, &destination_position);
     if is_legal_move {
-        new_board[destination_position.position.line][destination_position.position.column] =
-            board[starting_position.position.line][starting_position.position.column];
-        new_board[starting_position.position.line][starting_position.position.column] = '.';
+        new_board[destination_position.line][destination_position.column] = BoardSpot::Piece(piece);
+        new_board[starting_position.line][starting_position.column] = BoardSpot::BLANK;
         (new_board, true)
     } else {
         println!("MOVIMENTO ILEGAL");
@@ -344,26 +441,31 @@ fn move_piece(
     }
 }
 
-fn find_opposite_king(board: &Board, color: String) -> Result<Position, &'static str> {
-    let opposite_king = if color == "White" { '♔' } else { '♚' };
+fn find_king(board: &Board, color: &Color) -> Result<Position, &'static str> {
     for (line_index, line) in board.iter().enumerate() {
         for (column_index, column) in line.iter().enumerate() {
-            if column == &opposite_king {
-                return Ok(Position {
-                    line: line_index,
-                    column: column_index,
-                });
+            match column {
+                BoardSpot::Piece(piece) => {
+                    if piece.color == *color && piece.piece_type == PieceType::KING {
+                        return Ok(Position {
+                            line: line_index,
+                            column: column_index,
+                        });
+                    }
+                }
+                BoardSpot::BLANK => continue,
             }
         }
     }
-    Err("invalid board")
+    return Err("Error while findig for king");
 }
-
-fn verify_if_was_check(board: &Board, piece_info: &Info) -> bool {
-    let color = get_piece_color(piece_info.piece.to_string());
-    let opposite_king_position = find_opposite_king(board, color).unwrap();
-    let piece_movements = generate_possible_movements(board, piece_info);
-    piece_movements.contains(&opposite_king_position)
+fn verify_if_was_check(board: &Board, color: Color) -> bool {
+    let king_position = find_king(board, &color).unwrap();
+    let enemy_color = color.reverse();
+    let all_enemy_pieces = find_all_one_color_pieces(board, enemy_color);
+    let all_enemy_possible_movements =
+        generate_all_pieces_possible_movements(board, all_enemy_pieces);
+    all_enemy_possible_movements.contains(&king_position)
 }
 
 fn read_player_move() -> String {
@@ -382,7 +484,7 @@ fn show_board(board: &Board) {
     for line in board.iter().rev() {
         print!("{} ", line_number);
         for spot in line.iter() {
-            print!("{} ", spot)
+            print!("{} ", spot.to_board_representation());
         }
         line_number -= 1;
         println!("");
@@ -395,75 +497,285 @@ fn show_board(board: &Board) {
     println!("");
 }
 
-fn get_info(board: &Board, player_move: String, columns: &Columns) -> [Info; 2] {
+fn get_info(board: &Board, player_move: String) -> [Result<Info, &'static str>; 2] {
     let positions: Vec<&str> = player_move.split(',').map(|s| s.trim()).collect();
-    let start = translate_notation(board, positions[0], &columns);
-    let end = translate_notation(board, positions[1], &columns);
+    let start = translate_notation(board, positions[0]);
+    let end = translate_notation(board, positions[1]);
     [start, end]
 }
 
-fn main() {
-    let columns: Columns = HashMap::from([
-        ('a', 1),
-        ('b', 2),
-        ('c', 3),
-        ('d', 4),
-        ('e', 5),
-        ('f', 6),
-        ('g', 7),
-        ('h', 8),
-    ]);
+fn find_all_one_color_pieces(board: &Board, color: Color) -> Vec<Info> {
+    let mut pieces: Vec<Info> = vec![];
 
-    let mut board = [
-        ['♜', '♞', '♝', '♛', '♚', '♝', '♞', '♜'],
-        ['♟', '♟', '♟', '♟', '♟', '♟', '♟', '♟'],
-        ['.', '.', '.', '.', '.', '.', '.', '.'],
-        ['.', '.', '.', '.', '.', '.', '.', '.'],
-        ['.', '.', '.', '.', '.', '.', '.', '.'],
-        ['.', '.', '.', '.', '.', '.', '.', '.'],
-        ['♙', '♙', '♙', '♙', '♙', '♙', '♙', '♙'],
-        ['♖', '♘', '♗', '♕', '♔', '♗', '♘', '♖'],
+    for (line_index, line) in board.iter().enumerate() {
+        for (column_index, column) in line.iter().enumerate() {
+            match column {
+                BoardSpot::Piece(piece) => {
+                    if piece.color == color {
+                        pieces.push(Info {
+                            position: Position {
+                                line: line_index,
+                                column: column_index,
+                            },
+                            piece: BoardSpot::Piece(Piece {
+                                piece_type: piece.piece_type,
+                                color: piece.color,
+                            }),
+                        })
+                    }
+                }
+                BoardSpot::BLANK => continue,
+            }
+        }
+    }
+
+    pieces
+}
+
+fn main() {
+    let mut board: Board = [
+        [
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::ROOK,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::KNIGHT,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::BISHOP,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::QUEEN,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::KING,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::BISHOP,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::KNIGHT,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::ROOK,
+                color: Color::WHITE,
+            }),
+        ],
+        [
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::WHITE,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::WHITE,
+            }),
+        ],
+        [
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+        ],
+        [
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+        ],
+        [
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+        ],
+        [
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+            BoardSpot::BLANK,
+        ],
+        [
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::PAWN,
+                color: Color::BLACK,
+            }),
+        ],
+        [
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::ROOK,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::KNIGHT,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::BISHOP,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::QUEEN,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::KING,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::BISHOP,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::KNIGHT,
+                color: Color::BLACK,
+            }),
+            BoardSpot::Piece(Piece {
+                piece_type: PieceType::ROOK,
+                color: Color::BLACK,
+            }),
+        ],
     ];
 
     println!("");
     println!("{:-^40}", "TERMINAL CHESS");
     println!("");
 
-    let mut is_white_turn = true;
-
-    show_board(&board);
+    let mut turn = Color::WHITE;
     loop {
+        show_board(&board);
+        let was_check = verify_if_was_check(&board, turn);
+        if was_check {
+            println!("XEQUE!!!");
+        }
+
         let player_move = read_player_move();
 
-        let [start, end] = get_info(&board, player_move, &columns);
-        let piece_color = get_piece_color(start.piece.to_string());
-        if piece_color == "Blank" {
-            println!("Escolha uma peca valida");
-            continue;
-        }
-        if (piece_color == "White" && is_white_turn) || (piece_color == "Black" && !is_white_turn) {
-            let (new_board, was_moved) = move_piece(&board, &start, &end);
-            board = new_board;
-            if was_moved {
-                is_white_turn = !is_white_turn;
+        let [start, end] = match get_info(&board, player_move).unwrap_array() {
+            Ok(positions) => positions,
+            Err(err) => {
+                println!("{err}");
+                continue;
+            }
+        };
 
-                let new_position = Info {
-                    position: Position {
-                        line: end.position.line,
-                        column: end.position.column,
-                    },
-                    piece: start.piece,
-                };
-                let was_check = verify_if_was_check(&board, &new_position);
-
-                //TO DO
-                if was_check {
-                    loop {}
+        match start.piece {
+            BoardSpot::Piece(piece) => {
+                if piece.color != turn {
+                    println!("Nao e o seu turno");
+                    continue;
+                }
+                let (new_board, was_moved) =
+                    move_piece(&board, piece, &start.position, &end.position);
+                board = new_board;
+                if was_moved {
+                    turn = turn.reverse();
                 }
             }
-            show_board(&board);
-        } else {
-            println!("NAO E SUA VEZ DE JOGAR");
+            BoardSpot::BLANK => {
+                println!("Escolha uma peca valida");
+                continue;
+            }
         }
+
+        // if (piece_color == "White" && is_white_turn) || (piece_color == "Black" && !is_white_turn) {
+        //     let (new_board, was_moved) = move_piece(&board, &start, &end);
+        //     board = new_board;
+        //     if was_moved {
+        //         is_white_turn = !is_white_turn;
+        //
+        //         let new_position = Info {
+        //             position: Position {
+        //                 line: end.position.line,
+        //                 column: end.position.column,
+        //             },
+        //             piece: start.piece,
+        //         };
+        //         /* let was_check = verify_if_was_check(&board, &new_position); */
+        //
+        //         //TO DO
+        //         if was_check {
+        //             loop {}
+        //         }
+        //     }
+        //     /* show_board(&board); */
+        // } else {
+        //     println!("NAO E SUA VEZ DE JOGAR");
+        // }
     }
 }
