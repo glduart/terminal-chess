@@ -1,20 +1,8 @@
-// TO DO: XEQUE DESCOBERTO, MOVIMENTOS ESPECIAIS, MELHORAR A NOTACAO, MAIS DE 1 PECA DANDO XEQUE AO
-// MESMO TEMPO
-
 use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
 
 const DIAGONALS: [[isize; 2]; 4] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 const SIDES: [[isize; 2]; 4] = [[0, 1], [0, -1], [1, 0], [-1, 0]];
-
-impl Color {
-    fn reverse(&self) -> Self {
-        match &self {
-            Color::WHITE => Color::BLACK,
-            Color::BLACK => Color::WHITE,
-        }
-    }
-}
 
 trait InfoArray {
     fn unwrap_array(&self) -> Result<[Info; 2], &'static str>;
@@ -50,6 +38,15 @@ enum PieceType {
 enum Color {
     WHITE,
     BLACK,
+}
+
+impl Color {
+    fn reverse(&self) -> Self {
+        match &self {
+            Color::WHITE => Color::BLACK,
+            Color::BLACK => Color::WHITE,
+        }
+    }
 }
 
 enum Columns {
